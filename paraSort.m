@@ -38,10 +38,12 @@ currParaIndex = 1;
 %parasiteidIndex = find(parasiteidIndex);
 
 %% initiate values for average/instantaneous speeds, mean sq displacement change
-% list of position from origin
-posXY = hypot(paraData.x_micron_(1:parasiteidIndex(2)),paraData.y_micron_(1:parasiteidIndex(2)));
+% list of xy position
+posXY = [paraData.x_micron_(1:parasiteidIndex(2)),paraData.y_micron_(1:parasiteidIndex(2))];
+% list of xy velocity
+speedXY = gradient(posXY')'./gradient(paraData.t_sec_(1:parasiteidIndex(2)));
 % list of instantaneous velocities for all points
-instSpeed = abs(gradient(posXY) ./ gradient(paraData.t_sec_(1:parasiteidIndex(2))));
+instSpeed = hypot(speedXY(:,1),speedXY(:,2));
 avgSpeed = mean(instSpeed);
 meansqDisp = 0.0;
 
@@ -83,8 +85,8 @@ paraInfo = uicontrol(paraUI,'Style','text', ...
     'String',['Parasite ID: ' newline ...
         'Recording:   '+ string(paraData.movie(1)) newline ...
         'Nr:          '+ string(paraData.Nr(1)) newline ...
-        'Average Speed: '+ string(avgSpeed) newline ...
-        'Instantaneous Speed: ' + string(instSpeed(1))], ...
+        'Average Speed: '+ string(avgSpeed) + ' micron' newline ...
+        'Instantaneous Speed: ' + string(instSpeed(1)) + ' micron/sec'], ...
     'FontSize',11, ...
     'HorizontalAlignment','left');
 
@@ -96,7 +98,7 @@ paraSelect = uidropdown(paraUI, ...
 
 % listener to update plot + info with time slider moving
 addlistener(paraSld, 'ContinuousValueChange', @(src, event)updatePlot(src, ax, paraData));
-addlistener(paraSld, 'ContinuousValueChange', @(src, event)updateInfo(src, instSpeed, avgSpeed, paraInfo, paraData));
+addlistener(paraSld, 'ContinuousValueChange', @(src, event)updateInfo(src, paraInfo, paraData));
 
 %% function updateParaID to update slider + info display + plot + avg/inst speed to match selected parasite upon dropdown selection
 function updateParaID(src, sld, infoDisplay, parasiteidIndex, ax, paraData)
@@ -109,11 +111,13 @@ function updateParaID(src, sld, infoDisplay, parasiteidIndex, ax, paraData)
     sld.SliderStep = [1/(sld.Max-sld.Min), 1/(sld.Max-sld.Min)];
 
     % calculate new speed and update on global variable
-    pXY = hypot(paraData.x_micron_(index:parasiteidIndex(src.ValueIndex+1)),paraData.y_micron_(index:parasiteidIndex(src.ValueIndex+1)));
-    iSpeed = abs(gradient(pXY) ./ gradient(paraData.t_sec_(index:parasiteidIndex(src.ValueIndex+1))));
+    pXY = [paraData.x_micron_(index:parasiteidIndex(src.ValueIndex+1)),paraData.y_micron_(index:parasiteidIndex(src.ValueIndex+1))];
+    sXY = gradient(pXY')'./gradient(paraData.t_sec_(index:parasiteidIndex(src.ValueIndex+1)));
+    iSpeed = hypot(sXY(:,1),sXY(:,2));
     aSpeed = mean(iSpeed);
 
     assignin('base','posXY',pXY);
+    assignin('base','speedXY',sXY);
     assignin('base','instSpeed',iSpeed);
     assignin('base','avgSpeed',aSpeed);
 
@@ -122,7 +126,7 @@ function updateParaID(src, sld, infoDisplay, parasiteidIndex, ax, paraData)
 
     % update plot + info to display first data of the selected parasite
     updatePlot(sld,ax,paraData);
-    updateInfo(sld, iSpeed, aSpeed, infoDisplay, paraData)
+    updateInfo(sld, infoDisplay, paraData)
 end
 
 %% function updatePlot to update plot + info with slider moving
@@ -145,9 +149,11 @@ function updatePlot(slider, ax, paraData)
 end
 
 %% function updateInfo to update displayed info.
-function updateInfo(slider, inst, avg, infoPanel, paraData)
-    % get value of currParaIndex
+function updateInfo(slider, infoPanel, paraData)
+    % get value of currParaIndex,instSpeed,avgSpeed
     index = evalin('base','currParaIndex');
+    inst = evalin('base','instSpeed');
+    avg = evalin('base','avgSpeed');
 
     % get value that the slider is on
     sliderValue = round(slider.Value);
@@ -156,6 +162,6 @@ function updateInfo(slider, inst, avg, infoPanel, paraData)
     infoPanel.String = ['Parasite ID: ' newline ...
         'Recording:   '+ string(paraData.movie(index)) newline ...
         'Nr:          '+ string(paraData.Nr(index)) newline ...
-        'Average Speed: '+ string(avg) newline ...
-        'Instantaneous Speed: ' + string(inst(sliderValue))];
+        'Average Speed: '+ string(avg) + ' micron' newline ...
+        'Instantaneous Speed: ' + string(inst(sliderValue)) + ' micron/sec'];
 end
