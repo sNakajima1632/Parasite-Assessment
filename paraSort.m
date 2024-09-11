@@ -39,13 +39,23 @@ currParaIndex = 1;
 
 %% initiate values for average/instantaneous speeds, mean sq displacement change
 % list of xy position
-posXY = [paraData.x_micron_(1:parasiteidIndex(2)),paraData.y_micron_(1:parasiteidIndex(2))];
+posXY = [paraData.x_micron_(1:parasiteidIndex(2)-1),paraData.y_micron_(1:parasiteidIndex(2)-1)];
 % list of xy velocity
-speedXY = gradient(posXY')'./gradient(paraData.t_sec_(1:parasiteidIndex(2)));
+speedXY = gradient(posXY')'./gradient(paraData.t_sec_(1:parasiteidIndex(2)-1));
 % list of instantaneous velocities for all points
 instSpeed = hypot(speedXY(:,1),speedXY(:,2));
 avgSpeed = mean(instSpeed);
-meansqDisp = 0.0;
+
+% msd for reference point being x(t-1) and y(t-1) AKA previous point
+% msd = distance/step
+msdPrev = diff(posXY).^2;
+msdPrev = sum(msdPrev,2);
+msdPrev = mean(msdPrev);
+% msd for reference point being x(1) and y(1) AKA first point
+% msd = displacement/step
+msdOrig = (posXY(2:end,:)-[posXY(1,1),posXY(1,2)]).^2;
+msdOrig = sum(msdOrig,2);
+msdOrig = mean(msdOrig);
 
 %% plot positions with interactive selection
 f = uifigure('Name','Parasite Position','Position',[100 100 1000 800]);
@@ -86,7 +96,9 @@ paraInfo = uicontrol(paraUI,'Style','text', ...
         'Recording:   '+ string(paraData.movie(1)) newline ...
         'Nr:          '+ string(paraData.Nr(1)) newline ...
         'Average Speed: '+ string(avgSpeed) + ' micron' newline ...
-        'Instantaneous Speed: ' + string(instSpeed(1)) + ' micron/sec'], ...
+        'Instantaneous Speed: ' + string(instSpeed(1)) + ' micron/sec' newline ...
+        'MSD each step: ' + string(msdPrev) newline ...
+        'MSD against initial position: ' + string(msdOrig)], ...
     'FontSize',11, ...
     'HorizontalAlignment','left');
 
@@ -111,8 +123,8 @@ function updateParaID(src, sld, infoDisplay, parasiteidIndex, ax, paraData)
     sld.SliderStep = [1/(sld.Max-sld.Min), 1/(sld.Max-sld.Min)];
 
     % calculate new speed and update on global variable
-    pXY = [paraData.x_micron_(index:parasiteidIndex(src.ValueIndex+1)),paraData.y_micron_(index:parasiteidIndex(src.ValueIndex+1))];
-    sXY = gradient(pXY')'./gradient(paraData.t_sec_(index:parasiteidIndex(src.ValueIndex+1)));
+    pXY = [paraData.x_micron_(index:parasiteidIndex(src.ValueIndex+1)-1),paraData.y_micron_(index:parasiteidIndex(src.ValueIndex+1)-1)];
+    sXY = gradient(pXY')'./gradient(paraData.t_sec_(index:parasiteidIndex(src.ValueIndex+1)-1));
     iSpeed = hypot(sXY(:,1),sXY(:,2));
     aSpeed = mean(iSpeed);
 
@@ -120,6 +132,18 @@ function updateParaID(src, sld, infoDisplay, parasiteidIndex, ax, paraData)
     assignin('base','speedXY',sXY);
     assignin('base','instSpeed',iSpeed);
     assignin('base','avgSpeed',aSpeed);
+
+    % calculate and update new MSD (previous and origin)
+    msdp = diff(pXY).^2;
+    msdp = sum(msdp,2);
+    msdp = mean(msdp);
+
+    msdo = (pXY(2:end,:)-[pXY(1,1),pXY(1,2)]).^2;
+    msdo = sum(msdo,2);
+    msdo = mean(msdo);
+
+    assignin('base','msdPrev',msdp);
+    assignin('base','msdOrig',msdo);
 
     % update global variable currParaIndex
     assignin('base','currParaIndex',index);
@@ -150,10 +174,12 @@ end
 
 %% function updateInfo to update displayed info.
 function updateInfo(slider, infoPanel, paraData)
-    % get value of currParaIndex,instSpeed,avgSpeed
+    % get value of currParaIndex,instSpeed,avgSpeed,msdPrev,msdOrig
     index = evalin('base','currParaIndex');
     inst = evalin('base','instSpeed');
     avg = evalin('base','avgSpeed');
+    prevMSD = evalin('base','msdPrev');
+    origMSD = evalin('base','msdOrig');
 
     % get value that the slider is on
     sliderValue = round(slider.Value);
@@ -163,5 +189,7 @@ function updateInfo(slider, infoPanel, paraData)
         'Recording:   '+ string(paraData.movie(index)) newline ...
         'Nr:          '+ string(paraData.Nr(index)) newline ...
         'Average Speed: '+ string(avg) + ' micron' newline ...
-        'Instantaneous Speed: ' + string(inst(sliderValue)) + ' micron/sec'];
+        'Instantaneous Speed: ' + string(inst(sliderValue)) + ' micron/sec' newline ...
+        'MSD each step: ' + string(prevMSD) newline ...
+        'MSD against initial position: ' + string(origMSD)];
 end
