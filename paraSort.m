@@ -37,7 +37,7 @@ currParaIndex = 1;
 %parasiteidIndex = char2double(paraData.PARASITEID);
 %parasiteidIndex = find(parasiteidIndex);
 
-%% initiate values for average/instantaneous speeds, mean sq displacement change
+%% average/instantaneous speeds, mean sq displacement initial calculation
 % list of xy position
 posXY = [paraData.x_micron_(1:parasiteidIndex(2)-1),paraData.y_micron_(1:parasiteidIndex(2)-1)];
 % list of xy velocity
