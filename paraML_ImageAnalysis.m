@@ -1,5 +1,5 @@
 % Shido Nakajima
-% parasite Machine Learning
+% Machine Learning Image Analysis using an adjusted version of previously built network for image classification.
 
 clear;clc;close all;
 
@@ -48,3 +48,57 @@ if ~exist('parasiteImages\','dir')
         end
     end
 end
+
+%% Image analysis using Deep Network Designer
+% read and make image dataset of parasite locomotion
+datasetPath = fullfile('parasiteImages/');
+imds = imageDatastore(datasetPath, ...
+    'IncludeSubfolders',true,'LabelSource','foldernames');
+
+% split data into 80% training images and 20% validation images
+[imdsTrain,imdsValidation] = splitEachLabel(imds,0.8,"randomized");
+
+% make image dataset to 200x200
+augTrain = augmentedImageDatastore([400, 400], imdsTrain);
+augValidation = augmentedImageDatastore([400, 400], imdsValidation);
+
+%% Define and train neural network for image classification
+% define layers. 3 total training block conducted.
+layers = [
+    imageInputLayer([400 400 3])
+	
+    % 2-D convolutional filter that scans image (filter size, filter amount)
+    convolution2dLayer(3,64)
+    % normalize data to reduce sensitivity to network initialization
+    batchNormalizationLayer
+    % rectified linear unit (ReLU). Cuts any value below zero
+    reluLayer
+	
+    % downsamples by taking maximum of each pooling region
+    maxPooling2dLayer(2,Stride=2)
+	
+    convolution2dLayer(3,32)
+    batchNormalizationLayer
+    reluLayer
+	
+    maxPooling2dLayer(2,Stride=2)
+	
+    convolution2dLayer(3,64)
+    batchNormalizationLayer
+    reluLayer
+	
+    % applies weight and bias vector
+    fullyConnectedLayer(2)
+    % applies softmax function, making the matrix into probability distribution
+    softmaxLayer];
+
+% training options
+options = trainingOptions("sgdm", ...
+    MaxEpochs=16, ...
+    ValidationData=augValidation, ...
+    ValidationFrequency=2, ...
+    Metrics="accuracy", ...
+    Plots="training-progress");    
+
+% train neural network defined above
+net = trainnet(augTrain,layers,'crossentropy',options);
