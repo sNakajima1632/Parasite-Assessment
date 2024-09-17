@@ -1,6 +1,8 @@
 % Shido Nakajima
 % Started 9/6/2024
 % Assessment from Dr. Ganusov of Texas Biomed
+% Plots coordinate points onto interactive figure with auto-updating
+% parasite data display.
 
 clear;clc;close all;
 

@@ -1,5 +1,6 @@
 % Shido Nakajima
-% Machine Learning Image Analysis using an adjusted version of previously built network for image classification.
+% Machine Learning with Image Analysis using an adjusted version of 
+% previously built Convolutional Neural Network for image classification.
 
 clear;clc;close all;
 
