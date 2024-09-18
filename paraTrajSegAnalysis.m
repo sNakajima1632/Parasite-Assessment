@@ -62,8 +62,9 @@ SegmentNumber = {};
 ID = {};
 AvgSpeed = [];
 MSDPrev = [];
-MSDOrig = [];
 TSD = [];
+AvgCosTheta = [];
+AvgDegTheta = [];
     
 %% make new directory if needed
 segImageDir = 'parasiteImages\segmented30\';
@@ -113,26 +114,37 @@ for i = 1:length(seg30index)-1
     msdp = mean(sum(diff(posXY).^2,2));
     MSDPrev = cat(1, MSDPrev, msdp);
 
-    % msd for reference point being x(1) and y(1) AKA first point
-    % msd = displacement/step
-    % angle between trajectories calculation
-    msdo = mean(sum((posXY(2:end,:)-[posXY(1,1),posXY(1,2)]).^2,2));
-    MSDOrig= cat(1, MSDOrig, msdo);
-    SegmentNumber = cat(1,SegmentNumber,segmentCounter);
-
     % TSD calculation
     stepLength = sqrt(sum(diff(posXY).^2,2));
     TSD = cat(1,TSD,sqrt(mean((stepLength(:)-mean(stepLength)).^2)));
 
-    % next segment number
+    % angle between trajectories calculation
+    cosTheta = [];
+    degTheta = [];
+    % loop to calculate angles
+    for j=2:length(posXY)-1
+        % vector of trajectory forming an angle (x2-x1,y2-y1)
+        u=diff(posXY(j-1:j,:));
+        v=diff(posXY(j:j+1,:)).*-1;
+
+        % calculate mean angle change from vectors and convert to degrees
+        cosTheta = cat(1,cosTheta,mean(max(min(dot(u,v)/(norm(u)*norm(v)),1),-1)));
+        degTheta = cat(1,degTheta,mean(real(acosd(cosTheta))));
+    end
+    % take mean of all angles within current segment
+    AvgCosTheta = cat(1,AvgCosTheta,mean(cosTheta));
+    AvgDegTheta = cat(1,AvgDegTheta,mean(degTheta));
+
+    % update segment number
+    SegmentNumber = cat(1,SegmentNumber,segmentCounter);
     segmentCounter = segmentCounter+1;
 end
 
 % create table
-MSDTable = table(ID,SegmentNumber,AvgSpeed,MSDPrev,MSDOrig,TSD);
+MSDTable = table(ID,SegmentNumber,AvgSpeed,MSDPrev,TSD,AvgCosTheta,AvgDegTheta);
 
 % create correlation matrix between mean speed, msdprev, msdorig, and tsd
-rho = partialcorr([MSDTable.AvgSpeed MSDTable.MSDPrev MSDTable.MSDOrig MSDTable.TSD]);
+rho = partialcorr([MSDTable.AvgSpeed MSDTable.MSDPrev MSDTable.TSD MSDTable.AvgDegTheta]);
 % remove upper half
 rho(logical(triu(ones(size(rho)),1))) = NaN;
 
@@ -153,27 +165,27 @@ y=MSDTable.MSDPrev;
 swarmchart(x,y,10);
 title('MSD');
 
-% MSD from initial point plot
-nexttile;
-y=MSDTable.MSDOrig;
-swarmchart(x,y,10);
-title('MSD, reference=t(1)');
-
 % TSD from initial point plot
 nexttile;
 y=MSDTable.TSD;
 swarmchart(x,y,10);
 title('TSD');
 
+% Mean angle between trajectories
+nexttile;
+y=MSDTable.AvgDegTheta;
+swarmchart(x,y,10);
+title('Mean Angle');
+
 % plot heatmap of correlation coefficient between speed, MSD, and TSD
 f2 = figure('Name','Pearson Correlation Coefficient between calculated values');
 h = heatmap(rho,...
     'MissingDataColor','k', ...
-    'XDisplayLabels',["Mean Speed", "MSD", "MSD ref=t(1)", "TSD"], ...
-    'YDisplayLabels',["Mean Speed", "MSD", "MSD ref=t(1)", "TSD"]);
+    'XDisplayLabels',["Mean Speed", "MSD", "TSD", "Mean Angle"], ...
+    'YDisplayLabels',["Mean Speed", "MSD", "TSD", "Mean Angle"]);
 
-% 6 plots for: Mean Speed vs MSD, Mean Speed vs MSDo, Mean Speed vs TSD,
-% MSD vs MSDo, MSD vs TSD, MSDo vs TSD
+% 6 plots for: Mean Speed vs MSD, Mean Speed vs TSD, Mean Speed vs Mean Angle,
+% MSD vs TSD, MSD vs Mean Angle, TSD vs Mean Angle
 f3 = figure('Name','Analysis data combination plot','Position',[200 200 1400 800]);
 % AvgSpeed vs MSDPrev plot
 axComb=subplot(2,3,1);
@@ -182,35 +194,26 @@ y=MSDTable.MSDPrev;
 plot(axComb,x,y,'.');
 xlabel(axComb,'AvgSpeed');
 ylabel(axComb,'MSD');
-title('AvgSpeed vs MSDPrev');
-
-% AvgSpeed vs MSDOrig
-axComb=subplot(2,3,2);
-y=MSDTable.MSDOrig;
-plot(axComb,x,y,'.');
-xlabel(axComb,'AvgSpeed');
-ylabel(axComb,'MSD, ref=t(1)');
-title('AvgSpeed vs MSDOrig');
+title('AvgSpeed vs MSD');
 
 % AvgSpeed vs TSD
-axComb=subplot(2,3,3);
+axComb=subplot(2,3,2);
 y=MSDTable.TSD;
 plot(axComb,x,y,'.');
 xlabel(axComb,'AvgSpeed');
 ylabel(axComb,'TSD');
 title('AvgSpeed vs TSD');
 
-% MSD vs MSDo
-axComb=subplot(2,3,4);
-x=MSDTable.MSDPrev;
-y=MSDTable.MSDOrig;
+% AvgSpeed vs Mean Angle
+axComb=subplot(2,3,3);
+y=MSDTable.AvgDegTheta;
 plot(axComb,x,y,'.');
-xlabel(axComb,'MSD');
-ylabel(axComb,'MSD, ref=t(1)');
-title('MSD vs MSDo');
+xlabel(axComb,'AvgSpeed');
+ylabel(axComb,'Mean Angle');
+title('AvgSpeed vs Mean Angle');
 
 % MSD vs TSD
-axComb=subplot(2,3,5);
+axComb=subplot(2,3,4);
 x=MSDTable.MSDPrev;
 y=MSDTable.TSD;
 plot(axComb,x,y,'.');
@@ -218,14 +221,23 @@ xlabel(axComb,'MSD');
 ylabel(axComb,'TSD');
 title('MSD vs TSD');
 
-% MSDo vs TSD
-axComb=subplot(2,3,6);
-x=MSDTable.MSDOrig;
-y=MSDTable.TSD;
+% MSD vs Mean Angle
+axComb=subplot(2,3,5);
+x=MSDTable.MSDPrev;
+y=MSDTable.AvgDegTheta;
 plot(axComb,x,y,'.');
-xlabel(axComb,'MSD, ref=t(1)');
-ylabel(axComb,'TSD');
-title('MSDo vs TSD');
+xlabel(axComb,'MSD');
+ylabel(axComb,'Mean Angle');
+title('MSD vs Mean Angle');
+
+% TSD vs Mean Angle
+axComb=subplot(2,3,6);
+x=MSDTable.TSD;
+y=MSDTable.AvgDegTheta;
+plot(axComb,x,y,'.');
+xlabel(axComb,'TSD');
+ylabel(axComb,'Mean Angle');
+title('TSD vs Mean Angle');
 
 %% Use Machine Learning (clustering) to evaluate data
 % Hierarchical Clustering evaluation on single data to observe optimal number of clusters
@@ -261,24 +273,80 @@ disp(eva);
 
 % k-means clustering evaluation for combination using CalinskiHarabasz for speed
 % all possible evaluation methods were used in the report
-eva = evalclusters([AvgSpeed,MSDPrev],'kmeans','CalinskiHarabasz','KList',1:10);
+eva = evalclusters([AvgSpeed,MSDPrev],'kmeans','silhouette','KList',1:10);
 disp("Mean speed vs MSD");
 disp(eva);
-eva = evalclusters([AvgSpeed,MSDOrig],'kmeans','CalinskiHarabasz','KList',1:10);
-disp("Mean speed vs MSD with reference at t=1");
-disp(eva);
-eva = evalclusters([AvgSpeed,TSD],'kmeans','CalinskiHarabasz','KList',1:10);
+eva = evalclusters([AvgSpeed,TSD],'kmeans','silhouette','KList',1:10);
 disp("Mean speed vs TSD");
 disp(eva);
-eva = evalclusters([MSDPrev,MSDOrig],'kmeans','CalinskiHarabasz','KList',1:10);
-disp("MSD vs MSD with reference at t=1");
+eva = evalclusters([AvgSpeed,AvgDegTheta],'kmeans','silhouette','KList',1:10);
+disp("Mean speed vs Mean Angle");
 disp(eva);
-eva = evalclusters([MSDPrev,TSD],'kmeans','CalinskiHarabasz','KList',1:10);
-disp("MSD vs TSD k-Means");
+eva = evalclusters([MSDPrev,TSD],'kmeans','silhouette','KList',1:10);
+disp("MSD vs TSD");
 disp(eva);
-eva = evalclusters([MSDOrig,TSD],'kmeans','CalinskiHarabasz','KList',1:10);
-disp("MSD with reference at t=1 vs TSD");
+eva = evalclusters([MSDPrev,AvgDegTheta],'kmeans','silhouette','KList',1:10);
+disp("MSD vs Mean Angle");
 disp(eva);
+eva = evalclusters([TSD,AvgDegTheta],'kmeans','silhouette','KList',1:10);
+disp("TSD vs Mean Angle");
+disp(eva);
+
+%% plot kmeans colorcoded scatter plot of significant values from above
+% MSD vs Mean angle with k=3
+idc = kmeans([MSDPrev,AvgDegTheta],3);
+figure('Name','k-means of MSD vs Mean Angle','Position',[500 250 1000 500]);
+subplot(1,2,1);
+gscatter(MSDPrev,AvgDegTheta,idc,'bgm');
+legend('Cluster 1','Cluster 2','Cluster 3');
+% plot evaluation
+subplot(1,2,2);
+plot(evalclusters([MSDPrev,AvgDegTheta],'kmeans','silhouette','KList',1:10));
+
+% plot for k=7 and k=8 that were significant. Silenced due to non-stable
+% evaluation method and result.
+%{
+% MSD vs Mean angle with k=7
+idc = kmeans([MSDPrev,AvgDegTheta],7);
+figure('Name','k-means of MSD vs Mean Angle','Position',[500 250 1000 500]);
+subplot(1,2,1);
+gscatter(MSDPrev,AvgDegTheta,idc,'rgbcmyk');
+legend('Cluster 1','Cluster 2','Cluster 3','Cluster 4','Cluster 5','Cluster 6','Cluster 7');
+% plot evaluation
+subplot(1,2,2);
+plot(evalclusters([MSDPrev,AvgDegTheta],'kmeans','CalinskiHarabasz','KList',1:10));
+
+% Mean speed vs Mean anagle with k=7
+idc = kmeans([AvgSpeed,AvgDegTheta],7);
+figure('Name','k-means of Mean Speed vs Mean Angle','Position',[500 250 1000 500]);
+subplot(1,2,1);
+gscatter(AvgSpeed,AvgDegTheta,idc,'rgbcmyk');
+legend('Cluster 1','Cluster 2','Cluster 3','Cluster 4','Cluster 5','Cluster 6','Cluster 7');
+% plot evaluation
+subplot(1,2,2);
+plot(evalclusters([AvgSpeed,AvgDegTheta],'kmeans','DaviesBouldin','KList',1:10));
+
+% MSD vs TSD with k=8
+idc = kmeans([MSDPrev,TSD],8);
+figure('Name','k-means of MSD vs TSD','Position',[500 250 1000 500]);
+subplot(1,2,1);
+gscatter(MSDPrev,TSD,idc,'rgbcmykw');
+legend('Cluster 1','Cluster 2','Cluster 3','Cluster 4','Cluster 5','Cluster 6','Cluster 7','Cluster 8');
+set(gca,'Color',[0.75 0.75 0.75]);
+% plot evaluation
+subplot(1,2,2);
+plot(evalclusters([MSDPrev,TSD],'kmeans','DaviesBouldin','KList',1:10));
+%}
+
+%% classification id (1-3) based on k-means evaluation above added to MSDTable
+ClassNum = idc;
+Tcn = table(ClassNum);
+MSDTable = [MSDTable, Tcn];
+MSDTable = movevars(MSDTable,'ClassNum','Before','ID');
+
+% make folder and export table for easier access. Comment out if wanted
+mkdir evaluationExport\;
+writetable(MSDTable,'evaluationExport/analysisData.csv','Delimiter',',','QuoteStrings','All');
 
 %% function to plot segmented trajectory and save as jpg file
 function plotExport(posXY,paraData,seg30index,i,segmentCounter)
