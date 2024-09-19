@@ -76,8 +76,10 @@ end
 
 % form a table of percentage of parasite's segments being class 1-3
 SegmentClassPercentage = table(ID,c1Percentage,c2Percentage,c3Percentage);
+writetable(SegmentClassPercentage,'evaluationExport/SegmentClassPercentage.csv','Delimiter',',','QuoteStrings','All');
 
 %% apply CNN image analysis to see difference from paraInitialImageAnalysis.m
+% silenced for speed
 %{
 % read and make image dataset of parasite locomotion
 datasetPath = fullfile('parasiteImages\classifiedSeg30\');
