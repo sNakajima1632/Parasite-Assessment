@@ -77,7 +77,7 @@ end
 % form a table of percentage of parasite's segments being class 1-3
 SegmentClassPercentage = table(ID,c1Percentage,c2Percentage,c3Percentage);
 
-%% apply image analysis to see difference from paraInitialImageAnalysis.m
+%% apply CNN image analysis to see difference from paraInitialImageAnalysis.m
 %{
 % read and make image dataset of parasite locomotion
 datasetPath = fullfile('parasiteImages\classifiedSeg30\');
@@ -144,3 +144,130 @@ net = trainnet(augTrain,layers,'crossentropy',options);
 %}
 
 %% machine learning analysis using decision tree
+% split data for cross validation (0.7 training, 0.3 validation)
+cv = cvpartition(length(paraClassSeg.ID),'HoldOut',0.3);
+valIndex = cv.test;
+dataTrain = paraClassSeg(~valIndex,:);
+% split validation to half (0.7 training, 0.15 validation, 0.15 testing)
+dataValidate = paraClassSeg(valIndex,:);
+cv = cvpartition(length(dataValidate.ID),'HoldOut',0.5);
+testIndex = cv.test;
+dataValidate = paraClassSeg(~testIndex,:);
+dataTest = paraClassSeg(testIndex,:);
+
+% decision tree for mean speed
+meanSpeedTree = fitctree(dataTrain.AvgSpeed,dataTrain.ClassNum);
+% calculate accuracy by 1-inaccuracy
+accMSTree = 1-loss(meanSpeedTree,dataValidate.AvgSpeed,dataValidate.ClassNum);
+
+% decision tree for msd
+MSDTree = fitctree(dataTrain.MSDPrev,dataTrain.ClassNum);
+accMSDTree = 1-loss(MSDTree,dataValidate.MSDPrev,dataValidate.ClassNum);
+
+% decision tree for tsd
+TSDTree = fitctree(dataTrain.TSD,dataTrain.ClassNum);
+accTSDTree = 1-loss(TSDTree,dataValidate.TSD,dataValidate.ClassNum);
+
+% decision tree for mean angle in degrees
+meanAngleTree = fitctree(dataTrain.AvgDegTheta,dataTrain.ClassNum);
+accMATree = 1-loss(meanAngleTree,dataValidate.AvgDegTheta,dataValidate.ClassNum);
+
+%% Bagged decision trees
+% bagged decision tree for mean speed
+meanSpeedTree = TreeBagger(50,dataTrain.AvgSpeed,dataTrain.ClassNum, ...
+    'Method','classification','OOBPrediction','on');
+
+% plot out-of-bag classification error
+figure('Name','OOB Classification Error','Position',[300 300 1200 300]);
+subplot(1,4,1);
+plot(oobError(meanSpeedTree));
+title('Mean Speed OOB Error');
+xlabel('Number of Trees Grown');
+ylabel('Out-of-bag Classification Error');
+% calculate accuracy by 1-inaccuracy
+accMSBagTree = mean(1-error(meanSpeedTree,dataValidate.AvgSpeed,dataValidate.ClassNum));
+
+% bagged decision tree for msd
+MSDTree = TreeBagger(50,dataTrain.MSDPrev,dataTrain.ClassNum, ...
+    'Method','classification','OOBPrediction','on');
+
+% plot out-of-bag classification error
+subplot(1,4,2);
+plot(oobError(MSDTree));
+title('MSD OOB Error');
+xlabel('Number of Trees Grown');
+ylabel('Out-of-bag Classification Error');
+% calculate accuracy by 1-inaccuracy
+accMSDBagTree = mean(1-error(MSDTree,dataValidate.MSDPrev,dataValidate.ClassNum));
+
+% bagged decision tree for tsd
+TSDTree = TreeBagger(50,dataTrain.TSD,dataTrain.ClassNum, ...
+    'Method','classification','OOBPrediction','on');
+
+% plot out-of-bag classification error
+subplot(1,4,3);
+plot(oobError(TSDTree));
+title('TSD OOB Error');
+xlabel('Number of Trees Grown');
+ylabel('Out-of-bag Classification Error');
+% calculate accuracy by 1-inaccuracy
+accTSDBagTree = mean(1-error(TSDTree,dataValidate.TSD,dataValidate.ClassNum));
+
+% bagged decision tree for mean angle
+meanAngleTree = TreeBagger(50,dataTrain.AvgDegTheta,dataTrain.ClassNum, ...
+    'Method','classification','OOBPrediction','on');
+
+% plot out-of-bag classification error
+subplot(1,4,4);
+plot(oobError(meanAngleTree));
+title('Mean Angle OOB Error');
+xlabel('Number of Trees Grown');
+ylabel('Out-of-bag Classification Error');
+% calculate accuracy by 1-inaccuracy
+accMABagTree = mean(1-error(meanAngleTree,dataValidate.AvgDegTheta,dataValidate.ClassNum));
+
+%% Classification Neural Network
+% make table into array
+XTrain = table2array(dataTrain(:,["AvgSpeed" "MSDPrev" "TSD" "AvgDegTheta"]));
+TTrain = categorical(dataTrain.ClassNum);
+XValid = table2array(dataValidate(:,["AvgSpeed" "MSDPrev" "TSD" "AvgDegTheta"]));
+TValid = categorical(dataValidate.ClassNum);
+XTest = table2array(dataTest(:,["AvgSpeed" "MSDPrev" "TSD" "AvgDegTheta"]));
+TTest = categorical(dataTest.ClassNum);
+
+% network layers
+layers = [
+    % 4 features (mean speed, MSD, TSD, mean angle)
+    featureInputLayer(4)
+    % fully connected layer, 3 output classes
+    fullyConnectedLayer(3)
+    softmaxLayer];
+
+% training options
+options = trainingOptions("sgdm", ...
+    ExecutionEnvironment="cpu", ...
+    InitialLearnRate=0.001, ...
+    MaxEpochs=60, ...
+    ValidationData={XValid,TValid}, ...
+    Metrics='accuracy', ...
+    Plots="training-progress");
+
+net = trainnet(XTrain,TTrain,layers,'crossentropy',options);
+
+%% test network with allocated testing data
+YTest = minibatchpredict(net,XTest);
+YTest = onehotdecode(YTest,categories(TTest),2);
+nnetAcc = mean(YTest == TTest);
+
+figure;
+confusionchart(TTest,YTest);
+
+%% compile and export accuracy data
+Method = {'Decision Tree';'Bagged Tree'};
+MeanSpeedAccuracy = [accMSTree;accMSBagTree];
+MSDAccuracy = [accMSDTree;accMSDBagTree];
+TSDAccuracy = [accTSDTree;accTSDBagTree];
+MeanAngleAccuracy = [accMATree;accMABagTree];
+
+AccuracyTable = table(Method,MeanSpeedAccuracy,MSDAccuracy,TSDAccuracy,MeanAngleAccuracy);
+writetable(AccuracyTable,'evaluationExport/AccuracyTable.csv','Delimiter',',','QuoteStrings','All');
